@@ -1,9 +1,7 @@
-import asyncio
-import io
 import logging
 import os
 import re
-
+import sys
 import requests
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Update
 from telegram.ext import (
@@ -335,8 +333,12 @@ async def on_bullets(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
 WEBHOOK_PATH = "tg-webhook"
 
 
-async def run_bot() -> None:
-    log.info("Запуск бота...")
+def main() -> None:
+    if not BOT_TOKEN:
+        log.error("BOT_TOKEN не задан в переменных окружения Render")
+        raise SystemExit(1)
+
+    log.info("Python: %s", sys.version.split()[0])
     log.info("RENDER_EXTERNAL_URL: %s", os.environ.get("RENDER_EXTERNAL_URL", "нет"))
 
     app = Application.builder().token(BOT_TOKEN).build()
@@ -352,14 +354,11 @@ async def run_bot() -> None:
     port = int(os.environ.get("PORT", "10000"))
     base_url = os.environ.get("WEBHOOK_URL") or os.environ.get("RENDER_EXTERNAL_URL")
 
-    await app.initialize()
-    await app.start()
-
     try:
         if base_url:
             webhook_url = base_url.rstrip("/") + f"/{WEBHOOK_PATH}"
             log.info("Режим webhook, порт %s, url %s", port, webhook_url)
-            await app.updater.start_webhook(
+            app.run_webhook(
                 listen="0.0.0.0",
                 port=port,
                 url_path=WEBHOOK_PATH,
@@ -368,27 +367,10 @@ async def run_bot() -> None:
             )
         else:
             log.info("Режим polling (локально)")
-            await app.updater.start_polling(drop_pending_updates=True)
-
-        log.info("Бот запущен и ждёт сообщения")
-        await asyncio.Event().wait()
-    finally:
-        await app.updater.stop()
-        await app.stop()
-        await app.shutdown()
-
-
-def main() -> None:
-    if not BOT_TOKEN:
-        log.error("BOT_TOKEN не задан в переменных окружения Render")
-        raise SystemExit(1)
-
-    try:
-        asyncio.run(run_bot())
+            app.run_polling(drop_pending_updates=True)
     except Exception:
         log.exception("Бот упал при запуске")
         raise SystemExit(1)
-
 
 if __name__ == "__main__":
     main()
