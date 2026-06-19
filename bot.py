@@ -352,8 +352,10 @@ async def run_bot() -> None:
     port = int(os.environ.get("PORT", "10000"))
     base_url = os.environ.get("WEBHOOK_URL") or os.environ.get("RENDER_EXTERNAL_URL")
 
-    async with app:
-        await app.start()
+    await app.initialize()
+    await app.start()
+
+    try:
         if base_url:
             webhook_url = base_url.rstrip("/") + f"/{WEBHOOK_PATH}"
             log.info("Режим webhook, порт %s, url %s", port, webhook_url)
@@ -366,12 +368,14 @@ async def run_bot() -> None:
             )
         else:
             log.info("Режим polling (локально)")
-            await app.updater.start_polling(
-                drop_pending_updates=True,
-                allowed_updates=Update.ALL_TYPES,
-            )
+            await app.updater.start_polling(drop_pending_updates=True)
 
+        log.info("Бот запущен и ждёт сообщения")
         await asyncio.Event().wait()
+    finally:
+        await app.updater.stop()
+        await app.stop()
+        await app.shutdown()
 
 
 def main() -> None:
