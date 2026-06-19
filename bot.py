@@ -2,6 +2,7 @@ import logging
 import os
 import re
 import sys
+import time
 import requests
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Update
 from telegram.ext import (
@@ -19,7 +20,7 @@ logging.basicConfig(
 )
 log = logging.getLogger(__name__)
 
-BOT_TOKEN = os.environ.get("BOT_TOKEN", "")
+BOT_TOKEN = os.environ.get("BOT_TOKEN", "").strip()
 TELEGRAPH_TOKEN = os.environ.get("TELEGRAPH_TOKEN", "")
 
 STYLES = {
@@ -333,16 +334,29 @@ async def on_bullets(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
 WEBHOOK_PATH = "tg-webhook"
 
 
-def main() -> None:
-    if not BOT_TOKEN:
-        log.error("BOT_TOKEN не задан в переменных окружения Render")
-        raise SystemExit(1)
+def verify_telegram_token() -> str:
+    resp = requests.get(
+        f"https://api.telegram.org/bot{BOT_TOKEN}/getMe",
+        timeout=30,
+    )
+    data = resp.json()
+    if not data.get("ok"):
+        raise RuntimeError(f"Неверный BOT_TOKEN: {data.get('description', data)}")
+    username = data["result"]["username"]
+    log.info("Telegram-бот: @%s", username)
+    return username
 
-    log.info("Python: %s", sys.version.split()[0])
-    log.info("RENDER_EXTERNAL_URL: %s", os.environ.get("RENDER_EXTERNAL_URL", "нет"))
 
+def clear_telegram_webhook() -> None:
+    requests.get(
+        f"https://api.telegram.org/bot{BOT_TOKEN}/deleteWebhook",
+        params={"drop_pending_updates": True},
+        timeout=30,
+    )
+
+
+def build_app() -> Application:
     app = Application.builder().token(BOT_TOKEN).build()
-
     app.add_handler(CommandHandler("start", cmd_start))
     app.add_handler(CommandHandler("cancel", cmd_cancel))
     app.add_handler(CommandHandler("done", cmd_done))
@@ -350,24 +364,57 @@ def main() -> None:
     app.add_handler(MessageHandler(filters.PHOTO, handle_photo))
     app.add_handler(CallbackQueryHandler(on_style, pattern=r"^style:"))
     app.add_handler(CallbackQueryHandler(on_bullets, pattern=r"^bullets:"))
+    return app
+
+
+def main() -> None:
+    if not BOT_TOKEN:
+        log.error("BOT_TOKEN не задан в переменных окружения Render")
+        raise SystemExit(1)
+
+    log.info("Python: %s", sys.version.split()[0])
+    base_url = os.environ.get("WEBHOOK_URL") or os.environ.get("RENDER_EXTERNAL_URL")
+    log.info("RENDER_EXTERNAL_URL: %s", base_url or "нет")
+
+    try:
+        verify_telegram_token()
+    except Exception:
+        log.exception("Проверка BOT_TOKEN не прошла")
+        raise SystemExit(1)
 
     port = int(os.environ.get("PORT", "10000"))
-    base_url = os.environ.get("WEBHOOK_URL") or os.environ.get("RENDER_EXTERNAL_URL")
 
     try:
         if base_url:
             webhook_url = base_url.rstrip("/") + f"/{WEBHOOK_PATH}"
-            log.info("Режим webhook, порт %s, url %s", port, webhook_url)
-            app.run_webhook(
-                listen="0.0.0.0",
-                port=port,
-                url_path=WEBHOOK_PATH,
-                webhook_url=webhook_url,
-                drop_pending_updates=True,
-            )
+            clear_telegram_webhook()
+
+            for attempt in range(1, 6):
+                app = build_app()
+                try:
+                    log.info(
+                        "Запуск webhook, попытка %s/5, порт %s, url %s",
+                        attempt,
+                        port,
+                        webhook_url,
+                    )
+                    app.run_webhook(
+                        listen="0.0.0.0",
+                        port=port,
+                        url_path=WEBHOOK_PATH,
+                        webhook_url=webhook_url,
+                        drop_pending_updates=True,
+                    )
+                    return
+                except Exception as exc:
+                    log.error("Попытка %s не удалась: %s", attempt, exc)
+                    if attempt < 5:
+                        time.sleep(15)
+                    else:
+                        raise
         else:
             log.info("Режим polling (локально)")
-            app.run_polling(drop_pending_updates=True)
+            build_app().run_polling(drop_pending_updates=True)
     except Exception:
         log.exception("Бот упал при запуске")
         raise SystemExit(1)
