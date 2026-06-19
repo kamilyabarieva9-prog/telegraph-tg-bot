@@ -2,7 +2,6 @@ import logging
 import os
 import re
 import sys
-import time
 import requests
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Update
 from telegram.ext import (
@@ -388,30 +387,14 @@ def main() -> None:
         if base_url:
             webhook_url = base_url.rstrip("/") + f"/{WEBHOOK_PATH}"
             clear_telegram_webhook()
-
-            for attempt in range(1, 6):
-                app = build_app()
-                try:
-                    log.info(
-                        "Запуск webhook, попытка %s/5, порт %s, url %s",
-                        attempt,
-                        port,
-                        webhook_url,
-                    )
-                    app.run_webhook(
-                        listen="0.0.0.0",
-                        port=port,
-                        url_path=WEBHOOK_PATH,
-                        webhook_url=webhook_url,
-                        drop_pending_updates=True,
-                    )
-                    return
-                except Exception as exc:
-                    log.error("Попытка %s не удалась: %s", attempt, exc)
-                    if attempt < 5:
-                        time.sleep(15)
-                    else:
-                        raise
+            log.info("Запуск webhook, порт %s, url %s", port, webhook_url)
+            build_app().run_webhook(
+                listen="0.0.0.0",
+                port=port,
+                url_path=WEBHOOK_PATH,
+                webhook_url=webhook_url,
+                drop_pending_updates=True,
+            )
         else:
             log.info("Режим polling (локально)")
             build_app().run_polling(drop_pending_updates=True)
