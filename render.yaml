@@ -3,10 +3,10 @@ services:
     name: telegraph-tg-bot
     runtime: python
     plan: free
-    buildCommand: pip install -r requirements.txt
+    buildCommand: pip install --upgrade pip && pip install -r requirements.txt
     startCommand: python bot.py
     envVars:
       - key: BOT_TOKEN
         sync: false
-      - key: TELEGRAPH_TOKEN
-        sync: false
+      - key: PYTHON_VERSION
+        value: 3.12.8
