@@ -1,3 +1,4 @@
+import asyncio
 import io
 import logging
 import os
@@ -331,17 +332,15 @@ async def on_bullets(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
         clear_session(chat_id)
 
 
-def main() -> None:
+async def run_bot() -> None:
     if not BOT_TOKEN:
         raise SystemExit("Задайте переменную окружения BOT_TOKEN")
 
-    get_telegraph_token()
+    log.info("Запуск бота...")
+    log.info("BOT_TOKEN задан: да")
+    log.info("RENDER_EXTERNAL_URL: %s", os.environ.get("RENDER_EXTERNAL_URL", "нет"))
 
-    app = (
-        Application.builder()
-        .token(BOT_TOKEN)
-        .build()
-    )
+    app = Application.builder().token(BOT_TOKEN).build()
 
     app.add_handler(CommandHandler("start", cmd_start))
     app.add_handler(CommandHandler("cancel", cmd_cancel))
@@ -354,19 +353,31 @@ def main() -> None:
     port = int(os.environ.get("PORT", "10000"))
     base_url = os.environ.get("WEBHOOK_URL") or os.environ.get("RENDER_EXTERNAL_URL")
 
-    if base_url:
-        webhook_url = base_url.rstrip("/") + f"/{BOT_TOKEN}"
-        log.info("Режим webhook (облако), порт %s", port)
-        app.run_webhook(
-            listen="0.0.0.0",
-            port=port,
-            url_path=BOT_TOKEN,
-            webhook_url=webhook_url,
-            allowed_updates=Update.ALL_TYPES,
-        )
-    else:
-        log.info("Режим polling (локально)")
-        app.run_polling(allowed_updates=Update.ALL_TYPES)
+    async with app:
+        await app.start()
+        if base_url:
+            webhook_url = base_url.rstrip("/") + f"/{BOT_TOKEN}"
+            log.info("Режим webhook (облако), порт %s", port)
+            await app.updater.start_webhook(
+                listen="0.0.0.0",
+                port=port,
+                url_path=BOT_TOKEN,
+                webhook_url=webhook_url,
+                drop_pending_updates=True,
+                allowed_updates=Update.ALL_TYPES,
+            )
+        else:
+            log.info("Режим polling (локально)")
+            await app.updater.start_polling(
+                drop_pending_updates=True,
+                allowed_updates=Update.ALL_TYPES,
+            )
+
+        await asyncio.Event().wait()
+
+
+def main() -> None:
+    asyncio.run(run_bot())
 
 
 if __name__ == "__main__":
