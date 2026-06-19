@@ -1,12 +1,9 @@
 services:
   - type: web
     name: telegraph-tg-bot
-    runtime: python
+    runtime: docker
     plan: free
-    buildCommand: pip install --upgrade pip && pip install -r requirements.txt
-    startCommand: python bot.py
+    dockerfilePath: ./Dockerfile
     envVars:
       - key: BOT_TOKEN
         sync: false
-      - key: PYTHON_VERSION
-        value: 3.12.8
