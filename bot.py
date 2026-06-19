@@ -332,12 +332,11 @@ async def on_bullets(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
         clear_session(chat_id)
 
 
-async def run_bot() -> None:
-    if not BOT_TOKEN:
-        raise SystemExit("Задайте переменную окружения BOT_TOKEN")
+WEBHOOK_PATH = "tg-webhook"
 
+
+async def run_bot() -> None:
     log.info("Запуск бота...")
-    log.info("BOT_TOKEN задан: да")
     log.info("RENDER_EXTERNAL_URL: %s", os.environ.get("RENDER_EXTERNAL_URL", "нет"))
 
     app = Application.builder().token(BOT_TOKEN).build()
@@ -356,15 +355,14 @@ async def run_bot() -> None:
     async with app:
         await app.start()
         if base_url:
-            webhook_url = base_url.rstrip("/") + f"/{BOT_TOKEN}"
-            log.info("Режим webhook (облако), порт %s", port)
+            webhook_url = base_url.rstrip("/") + f"/{WEBHOOK_PATH}"
+            log.info("Режим webhook, порт %s, url %s", port, webhook_url)
             await app.updater.start_webhook(
                 listen="0.0.0.0",
                 port=port,
-                url_path=BOT_TOKEN,
+                url_path=WEBHOOK_PATH,
                 webhook_url=webhook_url,
                 drop_pending_updates=True,
-                allowed_updates=Update.ALL_TYPES,
             )
         else:
             log.info("Режим polling (локально)")
@@ -377,7 +375,15 @@ async def run_bot() -> None:
 
 
 def main() -> None:
-    asyncio.run(run_bot())
+    if not BOT_TOKEN:
+        log.error("BOT_TOKEN не задан в переменных окружения Render")
+        raise SystemExit(1)
+
+    try:
+        asyncio.run(run_bot())
+    except Exception:
+        log.exception("Бот упал при запуске")
+        raise SystemExit(1)
 
 
 if __name__ == "__main__":
